@@ -53,16 +53,34 @@ function Start-Poshbot {
         $hasher = [System.Security.Cryptography.HashAlgorithm]::Create($hash_algorithm)
         $encoder = New-Object System.Text.UTF8Encoding
     
-        
+        $ScriptBlock_text = @"
+param(`$from,`$instruction)
+$($Scriptblock.ToString())
+
+"@
+
+       $ScriptBlock = [scriptblock]::create($ScriptBlock_text)
+
+           Write-Verbose "Registering HTML output type"
+            Add-Type -TypeDefinition @"
+            using System;
+             
+            public class PoshbotHTMLOutput
+            {
+                public String Content;
+            }
+"@
+
     }
 
+
     process {
-        Write-Verbose "Entering Loop"
+        Write-Verbose "Entering Loop -functions: $functions"
         while ($true) {
             $hipchat_history = Get-HipChatHistory -Room $Room -Token $Token
 
             $hipchat_history | 
-                Where-Object {$_.message -match "(@)?$Name (?<instruction>.*)" } | 
+                Where-Object {$_.message -match "^(@)?$Name (?<instruction>.*)" } | 
                         ForEach-Object {
                             Write-Verbose "Matched a message"
                             $string_builder = New-Object System.Text.StringBuilder
@@ -80,19 +98,28 @@ function Start-Poshbot {
                                 $from = $_.from.name -replace ' ', ''
                                 $instruction = $matches.instruction
 
-                                Write-Verbose "Attempting to run ScriptBlock for $from ($instruction)"
-                                try {
-                                    $reply = Invoke-Command -ScriptBlock {
-                                        param($from,$instruction)
-                                        $ScriptBlock.Invoke()
-                                    } -ArgumentList $from,$instruction
+                                if ($from -ne $name) {
+                                    Write-Verbose "Attempting to run ScriptBlock for $from ($instruction)"
+                                    try {
+                                        $reply = Invoke-Command -ScriptBlock $ScriptBlock -ArgumentList $from,$instruction 
 
-                                    Send-HipChatMessage -Message $reply -Room $Room -From $Name -Token $Token
-                                }
+                                        if ($reply) {
+                                            if($reply.GetType().Name -eq 'PoshbotHTMLOutput') {
+                                                Send-HipChatMessage -Message $reply.content -Room $Room -From $Name -Token $Token -MessageFormat html -HTMLPreformatted
+                                            } else {
+                                                Send-HipChatMessage -Message $reply -Room $Room -From $Name -Token $Token -MessageFormat Text
+                                            }
+                                        } else {
+                                            Send-HipChatMessage -Message "@$from (problem) No reply to your instruction" -Room $Room -From $Name -Token $Token -MessageFormat Text
+                                        }
+                                    }
 
-                                catch {
-                                    Write-Error "Problem invoking scriptblock for message from @$from"
-                                    Send-HipChatMessage -Message "@$from (problem) Error executing command" -Room $Room -From $Name -Token $Token
+                                    catch {
+                                        Write-Error "Problem invoking scriptblock for message from @$from $_"
+                                        Send-HipChatMessage -Message "@$from (problem) Error executing command" -Room $Room -From $Name -Token $Token -MessageFormat Text
+                                    }
+                                } else {
+                                    Write-Verbose "Ignore messages from $Name to $Name"
                                 }
                             } else {
                                 Write-Verbose "Hash already stored"
