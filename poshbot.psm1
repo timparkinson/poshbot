@@ -4,6 +4,8 @@
 
 # Requires https://github.com/timparkinson/posh-hipchat
 
+Set-Variable -Name "PoshbotBrains" -Value @{} -Scope Script
+
 #region Invoke
 function Start-Poshbot {
     [CmdletBinding(DefaultParameterSetName='File')]
@@ -77,7 +79,7 @@ $($Scriptblock.ToString())
     process {
         Write-Verbose "Entering Loop -functions: $functions"
         while ($true) {
-            $hipchat_history = Get-HipChatHistory -Room $Room -Token $Token
+            $hipchat_history = Get-HipChatHistory -Room $Room -Token $Token -ErrorAction Continue
 
             $hipchat_history | 
                 Where-Object {$_.message -match "^(@)?$Name (?<instruction>.*)" } | 
@@ -134,4 +136,117 @@ $($Scriptblock.ToString())
 #endregion
 
 
+#region Brain
+function Import-PoshbotBrain {
+    [CmdletBinding()]
 
+    param(
+        [Parameter(Mandatory=$true)]
+        $Brain
+    )
+
+    begin {
+        
+    }
+
+    process {
+        if (-not (Test-Path $script:PoshbotBrains.$Brain)) {
+            New-Variable -Name "PoshbotBrain_$Brain" -Value @{} -Scope Script -Force
+        } else {
+            New-Variable -Name "PoshbotBrain_$Brain" -Value ((Get-Content $script:PoshbotBrains.$Brain) -join "`n" | ConvertFrom-Json) -Scope Script -Force
+        }
+    }
+
+
+    end {}
+}
+
+function Save-PoshbotBrain {
+    [CmdletBinding()]
+
+    param(
+        [Parameter(Mandatory=$true)]
+        $Brain
+    )
+
+    begin {
+        
+        if (-not (Test-Path -IsValid $script:PoshbotBrains.$Brain)) {
+            throw "Invalid path $($script:PoshbotBrains.$Brain)"
+        }
+    }
+
+    process {
+        Get-Variable -Name "PoshbotBrain_$Brain" -Scope Script -ValueOnly | ConvertTo-Json | Out-File -FilePath $script:PoshbotBrains.$Brain
+    }
+
+    end {}
+}
+
+function Get-PoshbotBrainValue {
+    [CmdletBinding()]
+
+    param(
+        [Parameter(Mandatory=$true)]
+        $Brain,
+        [Parameter(Mandatory=$true)]
+        $Key
+    )
+
+    begin {}
+
+    process {
+        (Get-Variable -Name "PoshbotBrain_$Brain").Value.$Key 
+    }
+
+    end {}
+}
+
+function Set-PoshbotBrainValue {
+[CmdletBinding()]
+
+    param(
+        [Parameter(Mandatory=$true)]
+        $Brain,
+        [Parameter(Mandatory=$true)]
+        $Key,
+        [Parameter()]
+        $Value
+    )
+
+    begin {}
+
+    process {
+        (Get-Variable -Name "PoshbotBrain_$Brain").Value.$Key = $Value
+        Save-PoshbotBrain -Brain $Brain 
+    }
+
+    end {}
+}
+
+function Initialize-PoshbotBrain {
+    [CmdletBinding()]
+
+    param(
+        [Parameter(Mandatory=$true)]
+        $Path,
+        [Parameter(Mandatory=$true)]
+        $Brain
+    )
+
+    begin {
+        $brain_path = Join-Path -Path $Path -ChildPath "$Brain.BRAIN"
+        if ((Test-Path -Path $brain_path -IsValid)) {
+            $script:PoshbotBrains.$Brain = $brain_path
+        }
+        
+    }
+
+    process {
+        
+    } 
+
+    end {}
+}
+
+#endregion
