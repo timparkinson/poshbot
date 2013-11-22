@@ -153,7 +153,15 @@ function Import-PoshbotBrain {
         if (-not (Test-Path $script:PoshbotBrains.$Brain)) {
             New-Variable -Name "PoshbotBrain_$Brain" -Value @{} -Scope Script -Force
         } else {
-            New-Variable -Name "PoshbotBrain_$Brain" -Value ((Get-Content $script:PoshbotBrains.$Brain) -join "`n" | ConvertFrom-Json) -Scope Script -Force
+            $brain_contents = @{}
+            $brain_from_json = (Get-Content $script:PoshbotBrains.$Brain) -join "`n" | 
+                ConvertFrom-Json 
+
+            $brain_from_json | Get-Member -MemberType NoteProperty | 
+                ForEach-Object {
+                    $brain_contents.$($_.Name) = $brain_from_json.$($_.Name)
+                }
+            New-Variable -Name "PoshbotBrain_$Brain" -Value $brain_contents -Scope Script -Force
         }
     }
 
